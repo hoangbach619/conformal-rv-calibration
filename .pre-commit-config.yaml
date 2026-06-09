@@ -1,0 +1,30 @@
+# Hooks are defined as local python-language hooks with pinned versions in
+# additional_dependencies, so the pinned tool versions match pyproject [dev]
+# exactly and there is a single source of truth for what runs.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check --fix
+        language: python
+        types: [python]
+        additional_dependencies: ["ruff==0.9.6"]
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format
+        language: python
+        types: [python]
+        additional_dependencies: ["ruff==0.9.6"]
+      - id: mypy
+        name: mypy --strict
+        entry: mypy
+        language: python
+        types: [python]
+        pass_filenames: false
+        args: ["src"]
+        additional_dependencies:
+          - "mypy==1.15.0"
+          - "pandas-stubs==2.2.3.241126"
+          - "types-requests==2.32.0.20241016"
+          - "types-python-dateutil==2.9.0.20241206"

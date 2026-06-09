@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data and outputs. No raw data, intervals, or results are committed; only the
+# frozen design lives in the repo until runs begin.
+data/
+outputs/
+results/
+*.parquet
+*.csv
+*.h5
+
+# Notebooks: strip checkpoints, keep the notebooks themselves.
+.ipynb_checkpoints/
+
+# Node, used by CI tooling.
+node_modules/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

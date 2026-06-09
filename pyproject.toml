@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conformal-rv-calibration"
+version = "0.0.0"
+description = "Conformal calibration of realised-volatility prediction intervals through regime breaks"
+readme = "README.md"
+requires-python = "==3.12.*"
+license = { text = "MIT" }
+authors = [{ name = "Bo" }]
+
+# Runtime dependencies are left unpinned by upper bound here on purpose: the
+# study fixes them in a lockfile before any run. Tooling below is exact-pinned
+# because reproducible linting and typing are part of the pre-registration.
+dependencies = [
+  "numpy",
+  "pandas",
+  "scipy",
+  "scikit-learn",
+  "statsmodels",
+  "yfinance",
+]
+
+[project.optional-dependencies]
+deep = [
+  # Single deep comparator only. Heavy, so kept out of the default install.
+  "torch",
+]
+dev = [
+  "ruff==0.9.6",
+  "mypy==1.15.0",
+  "pandas-stubs==2.2.3.241126",
+  "types-requests==2.32.0.20241016",
+  "types-python-dateutil==2.9.0.20241206",
+  "pytest==8.3.4",
+  "pre-commit==4.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+conformal_rv = ["py.typed"]
+
+# ---------------------------------------------------------------------------
+# Project conventions, asserted as tooling config so they are not just prose.
+# SEED=42 and n_jobs=1 are the reproducibility conventions; see
+# docs/preregistration.md and conformal_rv.SEED / conformal_rv.N_JOBS.
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/F pyflakes+pycodestyle, I import sorting, UP pyupgrade, B bugbear,
+# SIM simplify, RUF ruff-specific. Comments-explain-why is a review rule,
+# not lintable, so it is not encoded here.
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# Type-check the package only. Tests use pytest patterns that fight --strict
+# and are not part of the shipped, typed surface.
+files = ["src"]
+mypy_path = "src"
+warn_unused_configs = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+# Third-party packages without bundled type information. Listed explicitly so
+# the suppression is auditable rather than a blanket ignore.
+module = [
+  "yfinance.*",
+  "statsmodels.*",
+  "sklearn.*",
+  "scipy.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The default invocation is the fast subset: slow tests are skipped unless
+# --slow is passed (see tests/conftest.py).
+addopts = "-ra"
