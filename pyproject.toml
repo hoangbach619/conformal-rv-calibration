@@ -17,10 +17,14 @@ authors = [{ name = "Bo" }]
 dependencies = [
   "numpy",
   "pandas",
+  "pyarrow",
   "scipy",
   "scikit-learn",
   "statsmodels",
   "yfinance",
+  # Browser-impersonating HTTP client, used only as the chart-JSON fallback
+  # when yfinance returns nothing for a ticker.
+  "curl-cffi",
 ]
 
 [project.optional-dependencies]
@@ -79,6 +83,7 @@ module = [
   "statsmodels.*",
   "sklearn.*",
   "scipy.*",
+  "curl_cffi.*",
 ]
 ignore_missing_imports = true
 
