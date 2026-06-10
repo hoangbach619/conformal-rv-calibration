@@ -19,8 +19,8 @@ class ARBaseline:
     def __init__(self, order: int) -> None:
         self.order = order
 
-    def fit(self, target: "pd.Series") -> "ARBaseline":
+    def fit(self, target: pd.Series[float]) -> ARBaseline:
         raise NotImplementedError
 
-    def predict(self, target: "pd.Series") -> "np.ndarray":
+    def predict(self, target: pd.Series[float]) -> np.ndarray:
         raise NotImplementedError

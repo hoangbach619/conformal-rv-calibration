@@ -13,4 +13,4 @@ from __future__ import annotations
 SEED: int = 42
 N_JOBS: int = 1
 
-__all__ = ["SEED", "N_JOBS"]
+__all__ = ["N_JOBS", "SEED"]

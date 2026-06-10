@@ -30,11 +30,9 @@ class DeepComparator:
         self.lower_quantile = lower_quantile
         self.upper_quantile = upper_quantile
 
-    def fit(
-        self, features: "pd.DataFrame", target: "pd.Series"
-    ) -> "DeepComparator":
+    def fit(self, features: pd.DataFrame, target: pd.Series[float]) -> DeepComparator:
         raise NotImplementedError
 
-    def predict_interval(self, features: "pd.DataFrame") -> "np.ndarray":
+    def predict_interval(self, features: pd.DataFrame) -> np.ndarray:
         """Return an (n, 2) array of lower and upper conditional quantiles."""
         raise NotImplementedError

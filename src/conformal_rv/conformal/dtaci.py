@@ -17,11 +17,9 @@ if TYPE_CHECKING:
 class DtACI:
     """Expert-aggregated ACI with an adaptive tuning of the meta rate."""
 
-    def __init__(self, alpha: float, gammas: "tuple[float, ...]") -> None:
+    def __init__(self, alpha: float, gammas: tuple[float, ...]) -> None:
         self.alpha = alpha
         self.gammas = gammas
 
-    def run(
-        self, intervals: "np.ndarray", targets: "np.ndarray"
-    ) -> "np.ndarray":
+    def run(self, intervals: np.ndarray, targets: np.ndarray) -> np.ndarray:
         raise NotImplementedError

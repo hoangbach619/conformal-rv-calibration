@@ -17,8 +17,8 @@ if TYPE_CHECKING:
 class HARModel:
     """Ordinary least squares HAR-RV regression on log realised vol."""
 
-    def fit(self, features: "pd.DataFrame", target: "pd.Series") -> "HARModel":
+    def fit(self, features: pd.DataFrame, target: pd.Series[float]) -> HARModel:
         raise NotImplementedError
 
-    def predict(self, features: "pd.DataFrame") -> "np.ndarray":
+    def predict(self, features: pd.DataFrame) -> np.ndarray:
         raise NotImplementedError

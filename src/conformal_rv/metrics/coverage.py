@@ -15,25 +15,23 @@ if TYPE_CHECKING:
     import numpy as np
 
 
-def marginal_coverage(
-    intervals: "np.ndarray", targets: "np.ndarray"
-) -> float:
+def marginal_coverage(intervals: np.ndarray, targets: np.ndarray) -> float:
     """Fraction of targets falling inside their interval."""
     raise NotImplementedError
 
 
 def conditional_coverage(
-    intervals: "np.ndarray", targets: "np.ndarray", regime_mask: "np.ndarray"
+    intervals: np.ndarray, targets: np.ndarray, regime_mask: np.ndarray
 ) -> float:
     """Empirical coverage restricted to the observations where mask is true."""
     raise NotImplementedError
 
 
 def coverage_gap(
-    intervals: "np.ndarray",
-    targets: "np.ndarray",
-    calm_mask: "np.ndarray",
-    post_break_mask: "np.ndarray",
+    intervals: np.ndarray,
+    targets: np.ndarray,
+    calm_mask: np.ndarray,
+    post_break_mask: np.ndarray,
 ) -> float:
     """Primary endpoint: calm coverage minus post-break coverage."""
     raise NotImplementedError

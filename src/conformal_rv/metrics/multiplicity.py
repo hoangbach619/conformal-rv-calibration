@@ -18,12 +18,12 @@ FDR_LEVEL: float = 0.10
 
 
 def benjamini_hochberg(
-    p_values: "np.ndarray", fdr_level: float = FDR_LEVEL
-) -> "np.ndarray":
+    p_values: np.ndarray, fdr_level: float = FDR_LEVEL
+) -> np.ndarray:
     """Return the boolean reject/accept vector under BH at the given FDR."""
     raise NotImplementedError
 
 
-def effective_number_of_tests(p_values: "np.ndarray") -> float:
+def effective_number_of_tests(p_values: np.ndarray) -> float:
     """Estimate the effective number of independent tests in the family."""
     raise NotImplementedError

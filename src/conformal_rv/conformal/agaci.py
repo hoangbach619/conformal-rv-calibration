@@ -16,11 +16,9 @@ if TYPE_CHECKING:
 class AgACI:
     """Online aggregation of ACI experts across a grid of learning rates."""
 
-    def __init__(self, alpha: float, gammas: "tuple[float, ...]") -> None:
+    def __init__(self, alpha: float, gammas: tuple[float, ...]) -> None:
         self.alpha = alpha
         self.gammas = gammas
 
-    def run(
-        self, intervals: "np.ndarray", targets: "np.ndarray"
-    ) -> "np.ndarray":
+    def run(self, intervals: np.ndarray, targets: np.ndarray) -> np.ndarray:
         raise NotImplementedError

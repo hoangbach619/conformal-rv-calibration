@@ -22,7 +22,5 @@ class SPCI:
         self.alpha = alpha
         self.window = window
 
-    def run(
-        self, point_forecasts: "np.ndarray", targets: "np.ndarray"
-    ) -> "np.ndarray":
+    def run(self, point_forecasts: np.ndarray, targets: np.ndarray) -> np.ndarray:
         raise NotImplementedError

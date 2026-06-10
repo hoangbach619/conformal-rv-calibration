@@ -18,19 +18,19 @@ HORIZONS: tuple[int, int, int, int] = (1, 5, 10, 22)
 
 
 def pinball_loss(
-    predicted_quantile: "np.ndarray", targets: "np.ndarray", quantile: float
+    predicted_quantile: np.ndarray, targets: np.ndarray, quantile: float
 ) -> float:
     """Average pinball loss at one quantile level."""
     raise NotImplementedError
 
 
 def pit_values(
-    cdf_at_target: "np.ndarray",
-) -> "np.ndarray":
+    cdf_at_target: np.ndarray,
+) -> np.ndarray:
     """Probability integral transform values for the realised targets."""
     raise NotImplementedError
 
 
-def pit_ks_statistic(pit: "np.ndarray") -> tuple[float, float]:
+def pit_ks_statistic(pit: np.ndarray) -> tuple[float, float]:
     """KS statistic and p-value of the PIT against the uniform."""
     raise NotImplementedError

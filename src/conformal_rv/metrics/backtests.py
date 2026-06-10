@@ -15,22 +15,20 @@ if TYPE_CHECKING:
     import numpy as np
 
 
-def kupiec_pof(
-    hits: "np.ndarray", alpha: float
-) -> tuple[float, float]:
+def kupiec_pof(hits: np.ndarray, alpha: float) -> tuple[float, float]:
     """Kupiec proportion-of-failures test. Returns statistic and p-value."""
     raise NotImplementedError
 
 
 def christoffersen_independence(
-    hits: "np.ndarray",
+    hits: np.ndarray,
 ) -> tuple[float, float]:
     """Christoffersen independence test on the hit sequence."""
     raise NotImplementedError
 
 
 def christoffersen_conditional_coverage(
-    hits: "np.ndarray", alpha: float
+    hits: np.ndarray, alpha: float
 ) -> tuple[float, float]:
     """Christoffersen joint conditional-coverage test."""
     raise NotImplementedError

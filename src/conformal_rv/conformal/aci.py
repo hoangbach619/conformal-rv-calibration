@@ -26,8 +26,6 @@ class ACI:
         """Ingest one realised coverage outcome, return the next alpha_t."""
         raise NotImplementedError
 
-    def run(
-        self, intervals: "np.ndarray", targets: "np.ndarray"
-    ) -> "np.ndarray":
+    def run(self, intervals: np.ndarray, targets: np.ndarray) -> np.ndarray:
         """Replay a test stream, returning the adjusted intervals."""
         raise NotImplementedError

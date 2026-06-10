@@ -13,13 +13,11 @@ if TYPE_CHECKING:
     import numpy as np
 
 
-def mean_width(intervals: "np.ndarray") -> float:
+def mean_width(intervals: np.ndarray) -> float:
     """Average interval width."""
     raise NotImplementedError
 
 
-def relative_width(
-    intervals: "np.ndarray", reference_intervals: "np.ndarray"
-) -> float:
+def relative_width(intervals: np.ndarray, reference_intervals: np.ndarray) -> float:
     """Mean width relative to a reference method, the H3 quantity."""
     raise NotImplementedError

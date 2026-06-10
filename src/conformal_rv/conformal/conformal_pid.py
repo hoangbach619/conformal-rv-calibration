@@ -30,7 +30,5 @@ class ConformalPID:
         self.k_p = k_p
         self.k_i = k_i
 
-    def run(
-        self, intervals: "np.ndarray", targets: "np.ndarray"
-    ) -> "np.ndarray":
+    def run(self, intervals: np.ndarray, targets: np.ndarray) -> np.ndarray:
         raise NotImplementedError
