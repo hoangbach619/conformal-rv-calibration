@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from conformal_rv import features
 
@@ -108,8 +107,17 @@ def test_calendar_features_depend_only_on_the_date() -> None:
     assert (gspc["month"].to_numpy() == direct.month.to_numpy()).all()
 
 
-def test_har_features_is_a_later_phase() -> None:
-    # The HAR regressors land with the HAR base model in Phase 2.
-    log_rv = pd.Series([0.0, 1.0, 2.0], index=pd.bdate_range("2020-01-01", periods=3))
-    with pytest.raises(NotImplementedError):
-        features.har_features(log_rv)
+def test_har_features_cascade_components() -> None:
+    log_rv = pd.Series(
+        np.arange(30, dtype=float), index=pd.bdate_range("2020-01-01", periods=30)
+    )
+    cascade = features.har_features(log_rv)
+
+    assert list(cascade.columns) == ["har_daily", "har_weekly", "har_monthly"]
+    # Daily is log-RV at t; weekly/monthly are trailing means over t-4..t, t-21..t.
+    assert cascade["har_daily"].iloc[25] == log_rv.iloc[25]
+    assert cascade["har_weekly"].iloc[25] == log_rv.iloc[21:26].mean()
+    assert cascade["har_monthly"].iloc[25] == log_rv.iloc[4:26].mean()
+    # No back-fill: incomplete leading windows stay NaN.
+    assert cascade["har_weekly"].iloc[:4].isna().all()
+    assert cascade["har_monthly"].iloc[:21].isna().all()

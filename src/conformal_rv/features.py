@@ -15,8 +15,7 @@ rules are enforced and not merely documented:
   carries a one-line justification at the call site.
 
 The HAR cascade (Corsi 2009) of daily, weekly and monthly RV averages is the
-regressor block the HAR base model consumes; it lands with that model in
-Phase 2, so ``har_features`` is a stub here.
+regressor block the HAR base model consumes; ``har_features`` builds it here.
 """
 
 from __future__ import annotations
@@ -75,13 +74,25 @@ def forward_fill_feature(series: pd.Series[float], reason: str) -> pd.Series[flo
 
 
 def har_features(log_rv: pd.Series[float]) -> pd.DataFrame:
-    """Build the daily/weekly/monthly HAR regressors from log realised vol.
+    """Build the Corsi (2009) HAR cascade for one index, from log realised vol.
 
-    Not implemented in Phase 1b: the HAR regressors land with the HAR base
-    model in Phase 2. The signature and the ``HAR_WINDOWS`` constant are fixed
-    here so the module's eventual surface is visible in the frozen design.
+    Three regressors at the forecast origin ``t``: the daily component is
+    log-RV at ``t``; the weekly and monthly components are trailing means over
+    ``t-4..t`` and ``t-21..t``. All three are realised and known at ``t``, and
+    the target sits at ``t + h`` with ``h >= 1``, so conditioning on log-RV
+    through ``t`` is information at ``t``, not lookahead.
+
+    No fill is applied: the leading rows without a full month are NaN, for the
+    caller to drop. Back-fill is never used (it would import a future value).
     """
-    raise NotImplementedError("HAR regressors land with the HAR model in Phase 2")
+    weekly, monthly = HAR_WINDOWS[1], HAR_WINDOWS[2]
+    return pd.DataFrame(
+        {
+            "har_daily": log_rv,
+            "har_weekly": log_rv.rolling(weekly).mean(),
+            "har_monthly": log_rv.rolling(monthly).mean(),
+        }
+    )
 
 
 def build_features(
