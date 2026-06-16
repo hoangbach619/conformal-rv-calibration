@@ -4,12 +4,17 @@ Primary online correction under test. DtACI runs K ACI experts over a fixed
 gamma grid and aggregates them in alpha-space, so the effective learning rate
 auto-tunes to the regime without a hand-set gamma.
 
+Shared family. Every expert reads its radius off the same fixed calibration
+reference with the same smooth, clamped quantile (see _online.py), so a DtACI
+expert is exactly a single fixed-gamma ACI and the methods differ only in their
+adaptation. CQR alone keeps the discrete order statistic for its finite-sample
+guarantee. Using the fixed reference makes the level alpha the sole adaptation
+knob: an expanding window would absorb the shift and leave nothing for gamma to
+tune.
+
 Scheme (following the 2024 paper, not AgACI's plain EWA). Each expert i keeps
 its own level alpha_t^i and updates it on *its own* coverage error with gamma_i.
-The conformal quantile is taken over the *fixed* calibration scores, so the
-level alpha is the sole adaptation knob -- unlike ACI's expanding window, which
-would let the window absorb the shift and leave nothing for gamma to tune. The
-output level is the weighted average alpha_bar = sum_i p_i alpha_t^i, and the
+The output level is the weighted average alpha_bar = sum_i p_i alpha_t^i, and the
 prediction interval uses the conformal quantile at ``1 - alpha_bar``. The
 weights are exponential in each expert's recent pinball loss, but -- and this is
 the difference from plain EWA -- they are mixed back toward uniform every step:
@@ -36,6 +41,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from conformal_rv.conformal._online import calibration_reference, reference_radius
 from conformal_rv.conformal.cqr import ConformalResult, conformity_scores
 
 # Fixed log-spaced grid of learning rates spanning slow to fast adaptation.
@@ -61,31 +67,6 @@ class DtACIResult:
     weight_trajectory: np.ndarray
 
 
-def _reference_radius(sorted_scores: np.ndarray, n: int, alpha_t: float) -> float:
-    """Linearly-interpolated ``(1 - alpha_t)`` quantile of the reference scores.
-
-    The level is clamped to ``[0, 1]``: ``alpha_t <= 0`` returns the widest
-    reference radius (the largest score) and ``alpha_t >= 1`` the narrowest.
-    Interpolating keeps the radius a smooth function of the level, so an expert
-    that overshoots its level gets a bounded, finite radius rather than the
-    degenerate infinite interval ACI would produce. This is the edge handling:
-    the aggregate never collapses to all of R or to the empty set, it saturates
-    at the extremes the calibration scores can express.
-    """
-    level = 1.0 - alpha_t
-    if level <= 0.0:
-        return float(sorted_scores[0])
-    if level >= 1.0:
-        return float(sorted_scores[-1])
-    position = level * (n - 1)
-    lower = int(np.floor(position))
-    if lower + 1 >= n:
-        return float(sorted_scores[lower])
-    fraction = position - lower
-    step = sorted_scores[lower + 1] - sorted_scores[lower]
-    return float(sorted_scores[lower] + fraction * step)
-
-
 def _pinball(score: float, radius: float, tau: float) -> float:
     """Pinball loss at level ``tau`` of a radius against the realised score."""
     residual = score - radius
@@ -108,9 +89,8 @@ def conformalise_dtaci(
     test_y = np.asarray(test_y, dtype=float)
 
     # Fixed reference: the calibration scores, sorted once. Every expert reads
-    # its radius off this same window, so only the level alpha differs.
-    sorted_calibration = np.sort(conformity_scores(cal_lower, cal_upper, cal_y))
-    n_reference = sorted_calibration.shape[0]
+    # its radius off this same reference, so only the level alpha differs.
+    sorted_calibration = calibration_reference(cal_lower, cal_upper, cal_y)
     test_scores = conformity_scores(test_lower, test_upper, test_y)
 
     gamma_array = np.asarray(gammas, dtype=float)
@@ -138,7 +118,7 @@ def conformalise_dtaci(
         weight_trajectory[t] = weights
 
         alpha_bar = float(np.dot(weights, alpha_experts))
-        q_bar = _reference_radius(sorted_calibration, n_reference, alpha_bar)
+        q_bar = reference_radius(sorted_calibration, alpha_bar)
         lowers[t] = float(test_lower[t]) - q_bar
         uppers[t] = float(test_upper[t]) + q_bar
         score = float(test_scores[t])
@@ -147,9 +127,7 @@ def conformalise_dtaci(
         losses = np.empty(experts, dtype=float)
         errors = np.empty(experts, dtype=float)
         for i in range(experts):
-            radius = _reference_radius(
-                sorted_calibration, n_reference, float(alpha_experts[i])
-            )
+            radius = reference_radius(sorted_calibration, float(alpha_experts[i]))
             losses[i] = _pinball(score, radius, tau)
             errors[i] = 1.0 if score > radius else 0.0
 

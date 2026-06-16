@@ -9,9 +9,10 @@ network.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from conformal_rv.conformal import aci
-from conformal_rv.conformal.cqr import conformalise_cqr
+from conformal_rv.conformal.cqr import conformalise_cqr, conformity_scores
 
 
 def test_aci_restores_coverage_under_shift_better_than_cqr() -> None:
@@ -82,47 +83,50 @@ def test_alpha_trajectory_follows_the_update_rule() -> None:
     assert np.all(np.diff(over.alpha_trajectory) > 0.0)
 
 
-def test_saturation_covers_all_then_empties() -> None:
-    cal_y = np.zeros(50)
-    cal_lower, cal_upper = np.full(50, -0.01), np.full(50, 0.01)
+def test_radius_saturates_at_the_calibration_extremes() -> None:
+    # The shared quantile clamps rather than going to +/-inf: under sustained
+    # miscoverage the radius saturates at the widest and narrowest the
+    # calibration scores can express.
+    rng = np.random.default_rng(0)
+    cal_y = rng.normal(0.0, 1.0, 500)
+    cal_lower, cal_upper = np.full(500, -1.0), np.full(500, 1.0)
+    reference = np.sort(conformity_scores(cal_lower, cal_upper, cal_y))
+    widest, narrowest = float(reference[-1]), float(reference[0])
+    n_test = 50
 
-    # Every test point is far outside a pinhole band: sustained under-coverage
-    # drives alpha_t <= 0, where the correction is +inf and the interval covers
-    # all of R (so those steps are covered).
-    n_test = 30
-    far_y = np.full(n_test, 100.0)
-    covers_all = aci.conformalise_aci(
+    # Sustained under-coverage drives alpha_t past 0; the radius clamps at the
+    # widest reference score (interval upper = test_upper + radius).
+    under = aci.conformalise_aci(
         cal_lower,
         cal_upper,
         cal_y,
-        np.full(n_test, -0.01),
-        np.full(n_test, 0.01),
-        far_y,
+        np.full(n_test, -1.0),
+        np.full(n_test, 1.0),
+        np.full(n_test, 50.0),
         alpha=0.2,
         gamma=0.5,
     )
-    assert covers_all.alpha_trajectory.min() <= 0.0
-    infinite = np.isposinf(covers_all.conformal.upper)
-    assert infinite.any()
-    assert covers_all.conformal.covered[infinite].all()
+    radius_under = under.conformal.upper - 1.0
+    assert under.alpha_trajectory.min() <= 0.0
+    assert radius_under.max() == pytest.approx(widest)
+    assert np.all(radius_under <= widest + 1e-9)
 
-    # Every test point sits inside a huge band: sustained over-coverage drives
-    # alpha_t >= 1, where the correction is -inf and the interval is empty.
-    inside_y = np.zeros(n_test)
-    empties = aci.conformalise_aci(
+    # Sustained over-coverage drives alpha_t past 1; the radius clamps at the
+    # narrowest reference score.
+    over = aci.conformalise_aci(
         cal_lower,
         cal_upper,
         cal_y,
         np.full(n_test, -100.0),
         np.full(n_test, 100.0),
-        inside_y,
+        np.zeros(n_test),
         alpha=0.2,
         gamma=0.5,
     )
-    assert empties.alpha_trajectory.max() >= 1.0
-    empty = empties.conformal.lower > empties.conformal.upper
-    assert empty.any()
-    assert not empties.conformal.covered[empty].any()
+    radius_over = over.conformal.upper - 100.0
+    assert over.alpha_trajectory.max() >= 1.0
+    assert radius_over.min() == pytest.approx(narrowest)
+    assert np.all(radius_over >= narrowest - 1e-9)
 
 
 def test_conformalise_aci_is_deterministic() -> None:

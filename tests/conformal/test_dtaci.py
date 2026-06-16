@@ -2,8 +2,8 @@
 
 DtACI is checked for restoring coverage under shift, for re-tuning toward the
 faster gammas after a regime break (a controlled comparison against a calm
-continuation), for the clamped radius edge cases, and for determinism. None
-touch the network.
+continuation), and for determinism. The shared clamped quantile is tested in
+test_online.py. None touch the network.
 """
 
 from __future__ import annotations
@@ -74,17 +74,6 @@ def test_dtaci_upweights_faster_gammas_after_a_break() -> None:
         )
 
     assert np.mean(broken_fast_mass) > np.mean(calm_fast_mass)
-
-
-def test_reference_radius_clamps_at_the_edges() -> None:
-    scores = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
-    n = scores.shape[0]
-    # alpha_t <= 0 asks for a level >= 1: the widest reference radius (the max).
-    assert dtaci._reference_radius(scores, n, -0.1) == 4.0
-    # alpha_t >= 1 asks for a level <= 0: the narrowest (the min).
-    assert dtaci._reference_radius(scores, n, 1.1) == 0.0
-    # In range, the radius is the linearly-interpolated quantile of the level.
-    assert dtaci._reference_radius(scores, n, 0.5) == 2.0  # level 0.5 -> midpoint
 
 
 def test_conformalise_dtaci_is_deterministic() -> None:

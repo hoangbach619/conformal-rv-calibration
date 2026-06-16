@@ -4,16 +4,21 @@ A named baseline to beat. AgACI runs a grid of ACI experts at different
 learning rates and aggregates their interval bounds online, so no single gamma
 has to be chosen. It is the strongest of the pre-2023 baselines in this study.
 
-Method. For a fixed log-spaced grid of gammas, each expert is the ACI of
-aci.py. The lower and upper bounds are aggregated separately by exponentially
-weighted averaging: each expert's weight decays with its pinball loss at the
-matching quantile level (``alpha/2`` for the lower bound, ``1 - alpha/2`` for
-the upper), with the standard known-horizon rate ``eta = sqrt(8 ln K / T)``.
-Predicting the weighted-average bound and updating weights only on past losses
-keeps the scheme online and, by the exponential-weights guarantee, no worse
-than the best single-gamma ACI up to the aggregation regret. A saturated
-expert bound (``+/-inf``) is excluded from the average and assigned a capped
-loss so its weight decays without contaminating the aggregate.
+Shared family. Each expert is the ACI of aci.py, which reads its radius off the
+same fixed calibration reference with the same smooth, clamped quantile (see
+_online.py) shared by the whole online family. The expert bounds are therefore
+always finite (the quantile saturates at the calibration extremes rather than
+collapsing to infinity), so the aggregation needs no special-casing. CQR alone
+keeps the discrete order statistic for its finite-sample guarantee.
+
+Method. For a fixed log-spaced grid of gammas, the lower and upper bounds are
+aggregated separately by exponentially weighted averaging: each expert's weight
+decays with its pinball loss at the matching quantile level (``alpha/2`` for the
+lower bound, ``1 - alpha/2`` for the upper), with the standard known-horizon
+rate ``eta = sqrt(8 ln K / T)``. Predicting the weighted-average bound and
+updating weights only on past losses keeps the scheme online and, by the
+exponential-weights guarantee, no worse than the best single-gamma ACI up to the
+aggregation regret.
 
 The aggregation here is EWA / Hedge, a variant of Zaffran et al. (2022), who
 use Bernstein Online Aggregation (BOA).
@@ -37,10 +42,6 @@ DEFAULT_GAMMAS: tuple[float, ...] = tuple(
     float(gamma) for gamma in np.geomspace(0.001, 0.5, 8)
 )
 
-# Loss charged to a non-finite (saturated) expert bound: large enough that its
-# weight decays to nothing, finite enough not to poison the weight update.
-_SATURATED_LOSS = 1.0e6
-
 
 @dataclass(frozen=True)
 class AgACIResult:
@@ -58,49 +59,35 @@ class AgACIResult:
 
 
 def _pinball_loss(y: float, predictions: np.ndarray, tau: float) -> np.ndarray:
-    """Pinball loss at level ``tau`` of each expert's bound, capped if infinite."""
+    """Pinball loss at level ``tau`` of each expert's bound."""
     residual = y - predictions
-    raw = np.where(residual >= 0.0, tau * residual, (tau - 1.0) * residual)
-    losses: np.ndarray = np.where(np.isfinite(raw), raw, _SATURATED_LOSS)
+    losses: np.ndarray = np.where(
+        residual >= 0.0, tau * residual, (tau - 1.0) * residual
+    )
     return losses
 
 
 def _aggregate_bounds(
     bounds: np.ndarray, y: np.ndarray, tau: float
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Exponentially weighted online aggregation of one bound across experts."""
+    """Exponentially weighted online aggregation of one bound across experts.
+
+    The expert bounds are finite (the shared quantile saturates at the
+    calibration extremes), so the aggregate is the plain weighted average.
+    """
     steps, experts = bounds.shape
     eta = float(np.sqrt(8.0 * np.log(experts) / steps))
 
     weights: np.ndarray = np.full(experts, 1.0 / experts)
     aggregate = np.empty(steps, dtype=float)
     for t in range(steps):
-        bound_t = bounds[t]
-        finite = np.isfinite(bound_t)
-        if bool(finite.any()):
-            # Average over the finite experts only, renormalising their weights.
-            masked = weights * finite
-            total = float(masked.sum())
-            if total > 0.0:
-                aggregate[t] = float(
-                    np.dot(masked / total, np.where(finite, bound_t, 0.0))
-                )
-            else:
-                aggregate[t] = float(bound_t[finite].mean())
-        else:
-            # Every expert saturated: fall back to the median (may be infinite).
-            aggregate[t] = float(np.median(bound_t))
+        aggregate[t] = float(np.dot(weights, bounds[t]))
 
         # Update on the loss revealed at t, shifting by the minimum first to
         # avoid underflow (a constant factor cancels in the renormalisation).
-        losses = _pinball_loss(float(y[t]), bound_t, tau)
+        losses = _pinball_loss(float(y[t]), bounds[t], tau)
         weights = weights * np.exp(-eta * (losses - losses.min()))
-        weight_sum = float(weights.sum())
-        weights = (
-            weights / weight_sum
-            if weight_sum > 0.0
-            else np.full(experts, 1.0 / experts)
-        )
+        weights = weights / float(weights.sum())
     return aggregate, weights
 
 
