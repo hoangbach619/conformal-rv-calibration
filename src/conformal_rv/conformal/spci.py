@@ -26,9 +26,11 @@ learned mapping is held fixed. The number of fits is ``ceil(n_test /
 refit_every)``.
 
 Sequential and no-lookahead. The model and the prediction window at step t use
-only scores dated before t. Reproducibility: ``random_state = 42`` and
-early stopping is disabled (no random validation split), so the fit is
-deterministic; no parallelism is introduced (``conformal_rv.N_JOBS = 1``).
+only scores dated before t. Reproducibility: the run seed is threaded into the
+booster's ``random_state`` (the engine passes the configuration seed; 42 is the
+standalone default), and early stopping is disabled (no random validation
+split), so the fit is deterministic; no parallelism is introduced
+(``conformal_rv.N_JOBS = 1``).
 """
 
 from __future__ import annotations
