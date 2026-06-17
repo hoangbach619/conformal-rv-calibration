@@ -39,6 +39,11 @@ DEFAULT_HORIZONS: tuple[int, ...] = (1, 5, 10, 22)
 # Internal target column name, kept out of the way of any cascade column.
 _TARGET = "__target__"
 
+# QuantReg iteration cap. Raised above the statsmodels default of 1000 because
+# real log-RV cascades occasionally need more IRLS steps; a run that still hits
+# this limit emits an IterationLimitWarning, which the engine records.
+_QUANTREG_MAX_ITER = 2000
+
 
 def _quantile_column(tau: float) -> str:
     """Stable column label for a quantile forecast, e.g. ``q0.1``."""
@@ -84,7 +89,9 @@ class QRHARModel:
 
         coefficients: dict[float, np.ndarray] = {}
         for tau in self.quantiles:
-            fitted = sm.QuantReg(response, with_intercept).fit(q=tau)
+            fitted = sm.QuantReg(response, with_intercept).fit(
+                q=tau, max_iter=_QUANTREG_MAX_ITER
+            )
             coefficients[tau] = np.asarray(fitted.params, dtype=float)
 
         self._columns = columns

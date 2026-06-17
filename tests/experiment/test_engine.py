@@ -78,8 +78,9 @@ def test_pooled_results_regime_and_days_share_one_index(
     assert n > 0
     assert run.regime.shape[0] == n
     assert run.days_since_break.shape[0] == n
-    for name in engine.METHOD_NAMES:
-        result = run.results[name]
+    # The six QR-HAR methods plus CQR on the AR-baseline band all share the index.
+    assert set(run.results) == set(engine._RESULT_KEYS)
+    for result in run.results.values():
         assert result.lower.shape[0] == n
         assert result.upper.shape[0] == n
         assert result.y.shape[0] == n
@@ -87,6 +88,7 @@ def test_pooled_results_regime_and_days_share_one_index(
     # Folds pooled in date order, no overlap, so the index is sorted and unique.
     assert run.test_dates.is_monotonic_increasing
     assert run.test_dates.is_unique
+    assert isinstance(run.qr_converged, bool)
 
 
 def test_realised_target_is_log_rv_at_t_plus_h(
@@ -94,10 +96,10 @@ def test_realised_target_is_log_rv_at_t_plus_h(
 ) -> None:
     log_rv, run = configuration
     expected = log_rv.shift(-_HORIZON).reindex(run.test_dates).to_numpy()
-    # Every method shares the realised target, and it is log-RV at t + h: this is
+    # Every result shares the realised target, and it is log-RV at t + h: this is
     # the no-lookahead alignment the engine must get right.
-    for name in engine.METHOD_NAMES:
-        assert np.allclose(run.results[name].y, expected)
+    for result in run.results.values():
+        assert np.allclose(result.y, expected)
 
 
 def test_engine_folds_respect_embargo_and_do_not_overlap(

@@ -26,10 +26,12 @@ Reproducibility. The base models are deterministic; ``seed`` sets SPCI's
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from statsmodels.tools.sm_exceptions import IterationLimitWarning
 
 from conformal_rv import features
 from conformal_rv.conformal.aci import conformalise_aci
@@ -73,13 +75,21 @@ METHOD_NAMES: tuple[str, ...] = (
     "SPCI",
 )
 
+# Result keys are (band, method): the six conformal methods calibrate the QR-HAR
+# band, and CQR additionally calibrates the AR-baseline band as the H3/H4 floor.
+_RESULT_KEYS: tuple[tuple[str, str], ...] = (
+    *(("qr_har", method) for method in METHOD_NAMES),
+    ("ar_baseline", "CQR"),
+)
+
 
 @dataclass(frozen=True)
 class ConfigurationRun:
     """A single (index, horizon, seed) run.
 
-    ``results`` is the pooled out-of-sample result per method; ``regime`` and
-    ``days_since_break`` are aligned to ``test_dates``.
+    ``results`` is the pooled out-of-sample result keyed by ``(band, method)``;
+    ``regime`` and ``days_since_break`` are aligned to ``test_dates``;
+    ``qr_converged`` records whether every quantile-regression fit converged.
     """
 
     index: str
@@ -88,7 +98,8 @@ class ConfigurationRun:
     test_dates: pd.DatetimeIndex
     regime: np.ndarray
     days_since_break: np.ndarray
-    results: dict[str, ConformalResult]
+    results: dict[tuple[str, str], ConformalResult]
+    qr_converged: bool
 
 
 @dataclass(frozen=True)
@@ -190,39 +201,67 @@ def run_on_series(
     regime_full, days_full = regime_and_days(dates)
     target = log_rv.shift(-horizon)
 
-    chunks: dict[str, list[ConformalResult]] = {name: [] for name in METHOD_NAMES}
+    chunks: dict[tuple[str, str], list[ConformalResult]] = {
+        key: [] for key in _RESULT_KEYS
+    }
     pooled_dates: list[pd.DatetimeIndex] = []
-    for block in blocks:
-        quantile = har_quantile.block_quantile_forecasts(
-            log_rv, block, horizons=(horizon,)
-        )[horizon]
-        # Fit the point HAR and AR baseline alongside, and check all three base
-        # models forecast the same test origins (the alignment that breaks).
-        point = har.block_point_forecasts(log_rv, block, horizons=(horizon,))[horizon]
-        ar = baseline_ar.block_quantile_forecasts(log_rv, block, horizons=(horizon,))[
-            horizon
-        ]
-        if not (
-            point.test.index.equals(quantile.test.index)
-            and ar.test.index.equals(quantile.test.index)
-        ):
-            raise RuntimeError("base-model test origins are misaligned")
+    # Capture QuantReg non-convergence (IterationLimitWarning) over the whole run
+    # so it is recorded in the result rather than printed and lost.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", IterationLimitWarning)
+        for block in blocks:
+            quantile = har_quantile.block_quantile_forecasts(
+                log_rv, block, horizons=(horizon,)
+            )[horizon]
+            # The point HAR and AR baseline are fitted alongside; all three base
+            # models must forecast the same test origins (the alignment risk).
+            point = har.block_point_forecasts(log_rv, block, horizons=(horizon,))[
+                horizon
+            ]
+            ar = baseline_ar.block_quantile_forecasts(
+                log_rv, block, horizons=(horizon,)
+            )[horizon]
+            if not (
+                point.test.index.equals(quantile.test.index)
+                and ar.test.index.equals(quantile.test.index)
+            ):
+                raise RuntimeError("base-model test origins are misaligned")
 
-        cal = _band(quantile.calibration, target)
-        tst = _band(quantile.test, target)
-        if cal.index.shape[0] == 0 or tst.index.shape[0] == 0:
-            continue
+            qr_cal = _band(quantile.calibration, target)
+            qr_test = _band(quantile.test, target)
+            ar_cal = _band(ar.calibration, target)
+            ar_test = _band(ar.test, target)
+            if qr_cal.index.shape[0] == 0 or qr_test.index.shape[0] == 0:
+                continue
+            if not ar_test.index.equals(qr_test.index):
+                raise RuntimeError("QR-HAR and AR-baseline test origins differ")
 
-        for name, result in _apply_methods(cal, tst, seed).items():
-            chunks[name].append(result)
-        pooled_dates.append(tst.index)
+            # Six methods on the QR-HAR band; CQR on the AR-baseline band.
+            for method, result in _apply_methods(qr_cal, qr_test, seed).items():
+                chunks[("qr_har", method)].append(result)
+            chunks[("ar_baseline", "CQR")].append(
+                conformalise_cqr(
+                    ar_cal.lower,
+                    ar_cal.upper,
+                    ar_cal.y,
+                    ar_test.lower,
+                    ar_test.upper,
+                    ar_test.y,
+                    ALPHA,
+                )
+            )
+            pooled_dates.append(qr_test.index)
+
+        qr_converged = not any(
+            issubclass(warning.category, IterationLimitWarning) for warning in caught
+        )
 
     test_dates = (
         pd.DatetimeIndex(np.concatenate([idx.to_numpy() for idx in pooled_dates]))
         if pooled_dates
         else pd.DatetimeIndex([])
     )
-    results = {name: _pool(chunks[name]) for name in METHOD_NAMES}
+    results = {key: _pool(chunks[key]) for key in _RESULT_KEYS}
     regime = regime_full.reindex(test_dates).to_numpy()
     days_since_break = days_full.reindex(test_dates).to_numpy()
     return ConfigurationRun(
@@ -233,6 +272,7 @@ def run_on_series(
         regime=regime,
         days_since_break=days_since_break,
         results=results,
+        qr_converged=qr_converged,
     )
 
 
@@ -268,6 +308,11 @@ def _apply_methods(cal: _Band, tst: _Band, seed: int) -> dict[str, ConformalResu
 
 def _pool(parts: list[ConformalResult]) -> ConformalResult:
     """Concatenate per-fold results over the full out-of-sample test span."""
+    if not parts:
+        empty = np.empty(0, dtype=float)
+        return ConformalResult(
+            lower=empty, upper=empty, y=empty, covered=np.empty(0, dtype=bool)
+        )
     return ConformalResult(
         lower=np.concatenate([part.lower for part in parts]),
         upper=np.concatenate([part.upper for part in parts]),
