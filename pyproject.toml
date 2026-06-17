@@ -28,9 +28,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-deep = [
-  # Single deep comparator only. Heavy, so kept out of the default install.
-  "torch",
+tft = [
+  # The TFT comparator (H4). Heavy and version-fragile, so kept out of the base
+  # install and the fast CI; pinned to a mutually compatible set.
+  "torch==2.12.0",
+  "lightning==2.6.5",
+  "pytorch-forecasting==1.7.0",
 ]
 dev = [
   "ruff==0.9.6",
@@ -77,15 +80,26 @@ warn_unreachable = true
 
 [[tool.mypy.overrides]]
 # Third-party packages without bundled type information. Listed explicitly so
-# the suppression is auditable rather than a blanket ignore.
+# the suppression is auditable rather than a blanket ignore. The torch stack is
+# the optional tft extra and ships incomplete stubs.
 module = [
   "yfinance.*",
   "statsmodels.*",
   "sklearn.*",
   "scipy.*",
   "curl_cffi.*",
+  "torch.*",
+  "lightning.*",
+  "pytorch_forecasting.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# The TFT module is excluded from strict checking: its torch/lightning glue is
+# heavily dynamic and the libraries lack the stubs strict needs. The rest of the
+# repo stays strict; the engine imports this module only behind the tft flag.
+module = ["conformal_rv.models.tft"]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -75,12 +75,21 @@ METHOD_NAMES: tuple[str, ...] = (
     "SPCI",
 )
 
-# Result keys are (band, method): the six conformal methods calibrate the QR-HAR
-# band, and CQR additionally calibrates the AR-baseline band as the H3/H4 floor.
-_RESULT_KEYS: tuple[tuple[str, str], ...] = (
-    *(("qr_har", method) for method in METHOD_NAMES),
-    ("ar_baseline", "CQR"),
+# Result keys are (band, method). The six conformal methods calibrate the QR-HAR
+# band; CQR additionally calibrates the AR-baseline band as the H3/H4 floor; and,
+# when TFT is requested, the six methods also calibrate the TFT comparator band.
+_QR_KEYS: tuple[tuple[str, str], ...] = tuple(
+    ("qr_har", method) for method in METHOD_NAMES
 )
+_TFT_KEYS: tuple[tuple[str, str], ...] = tuple(
+    ("tft", method) for method in METHOD_NAMES
+)
+_RESULT_KEYS: tuple[tuple[str, str], ...] = (*_QR_KEYS, ("ar_baseline", "CQR"))
+
+
+def _result_keys(with_tft: bool) -> tuple[tuple[str, str], ...]:
+    """Result keys for a run, optionally including the TFT comparator band."""
+    return (*_RESULT_KEYS, *_TFT_KEYS) if with_tft else _RESULT_KEYS
 
 
 @dataclass(frozen=True)
@@ -153,12 +162,14 @@ def regime_and_days(
     return regime, days_since
 
 
-def run_configuration(index: str, horizon: int, seed: int = 42) -> ConfigurationRun:
+def run_configuration(
+    index: str, horizon: int, seed: int = 42, *, with_tft: bool = False
+) -> ConfigurationRun:
     """Run one configuration, loading the index OHLC and VIX (cached)."""
     ohlc = load_index_ohlc(index)[index]
     log_rv = to_log_rv(yang_zhang(ohlc)).dropna()
     vix = load_vix()["close"]
-    return run_on_series(index, log_rv, ohlc, vix, horizon, seed)
+    return run_on_series(index, log_rv, ohlc, vix, horizon, seed, with_tft=with_tft)
 
 
 def run_on_series(
@@ -169,6 +180,7 @@ def run_on_series(
     horizon: int,
     seed: int = 42,
     *,
+    with_tft: bool = False,
     train: int = 2000,
     embargo: int = 44,
     calibration: int = 250,
@@ -178,7 +190,9 @@ def run_on_series(
     """Run one configuration on already-loaded series (no network).
 
     The split windows default to the pre-registered values; tests pass smaller
-    ones. Folds whose test block has no realisable target are skipped.
+    ones. Folds whose test block has no realisable target are skipped. With
+    ``with_tft`` the TFT comparator band is fitted and pooled alongside QR-HAR
+    (its optional torch dependency is imported only then).
     """
     log_rv = log_rv.sort_index()
 
@@ -201,8 +215,9 @@ def run_on_series(
     regime_full, days_full = regime_and_days(dates)
     target = log_rv.shift(-horizon)
 
+    result_keys = _result_keys(with_tft)
     chunks: dict[tuple[str, str], list[ConformalResult]] = {
-        key: [] for key in _RESULT_KEYS
+        key: [] for key in result_keys
     }
     pooled_dates: list[pd.DatetimeIndex] = []
     # Capture QuantReg non-convergence (IterationLimitWarning) over the whole run
@@ -250,6 +265,21 @@ def run_on_series(
                     ALPHA,
                 )
             )
+
+            # The TFT comparator band: same six methods, same origins.
+            if with_tft:
+                from conformal_rv.models import tft
+
+                tft_forecast = tft.block_quantile_forecasts(
+                    panel, log_rv, block, horizon, seed
+                )[horizon]
+                tft_cal = _band(tft_forecast.calibration, target)
+                tft_test = _band(tft_forecast.test, target)
+                if not tft_test.index.equals(qr_test.index):
+                    raise RuntimeError("TFT and QR-HAR test origins differ")
+                for method, result in _apply_methods(tft_cal, tft_test, seed).items():
+                    chunks[("tft", method)].append(result)
+
             pooled_dates.append(qr_test.index)
 
         qr_converged = not any(
@@ -261,7 +291,7 @@ def run_on_series(
         if pooled_dates
         else pd.DatetimeIndex([])
     )
-    results = {key: _pool(chunks[key]) for key in _RESULT_KEYS}
+    results = {key: _pool(chunks[key]) for key in result_keys}
     regime = regime_full.reindex(test_dates).to_numpy()
     days_since_break = days_full.reindex(test_dates).to_numpy()
     return ConfigurationRun(
