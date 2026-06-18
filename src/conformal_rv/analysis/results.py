@@ -96,6 +96,9 @@ H1_KUPIEC_ALPHA: float = 0.05  # one-sided Kupiec rejection level
 H2_RESTORED_BAND: tuple[float, float] = (0.76, 0.84)  # restored post-break band
 H3_WIDTH_RATIO: float = 1.25  # max calm-width inflation over the CQR base
 
+# Headline horizon for the per-index H1 coverage breakdown.
+HEADLINE_HORIZON: int = 22
+
 # The two interval quantile levels (alpha/2 and 1 - alpha/2).
 _LEVELS: np.ndarray = np.array([ALPHA / 2.0, 1.0 - ALPHA / 2.0])
 
@@ -248,6 +251,16 @@ def _pooled_post_break_coverage(rows: pd.DataFrame) -> tuple[float, int]:
     return float(covered[mask].mean()), n
 
 
+def _pooled_calm_coverage(rows: pd.DataFrame) -> float:
+    """Calm coverage pooled over the rows."""
+    regime = rows["regime"].to_numpy()
+    covered = rows["covered"].to_numpy(dtype=bool)
+    mask = regime == CALM
+    if not bool(mask.any()):
+        return float("nan")
+    return float(covered[mask].mean())
+
+
 def _pooled_calm_width_median(rows: pd.DataFrame) -> float:
     """Median calm interval width pooled over the rows."""
     regime = rows["regime"].to_numpy()
@@ -378,14 +391,72 @@ def adjudicate_hypotheses(frame: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame.from_records(records)
 
 
+def per_index_h1(frame: pd.DataFrame, horizon: int = HEADLINE_HORIZON) -> pd.DataFrame:
+    """Static-CQR calm/post-break coverage and gap per index at one horizon.
+
+    Pools across seeds and dates for the base ``qr_har`` CQR band; one row per
+    index, ordered by the calm-minus-post-break gap (largest failure first).
+    These are the numbers behind the per-index figure.
+    """
+    base = frame[
+        (frame["horizon"] == horizon)
+        & (frame["band"] == BASE_BAND)
+        & (frame["method"] == BASE_METHOD)
+    ]
+    records: list[dict[str, object]] = []
+    for index, rows in base.groupby("index"):
+        calm = _pooled_calm_coverage(rows)
+        post, n_post = _pooled_post_break_coverage(rows)
+        records.append(
+            {
+                "index": str(index),
+                "coverage_calm": calm,
+                "coverage_post_break": post,
+                "coverage_gap": calm - post,
+                "n_post_break": n_post,
+            }
+        )
+    # Explicit columns so an absent horizon yields an empty (not column-less)
+    # frame the sort can still operate on.
+    columns = [
+        "index",
+        "coverage_calm",
+        "coverage_post_break",
+        "coverage_gap",
+        "n_post_break",
+    ]
+    table = pd.DataFrame(records, columns=columns)
+    return table.sort_values("coverage_gap", ascending=False).reset_index(drop=True)
+
+
+def robustness_verdicts(frame: pd.DataFrame) -> pd.DataFrame:
+    """H1/H2/H3 verdicts on all configs vs dropping non-converged QuantReg fits.
+
+    Reruns the adjudication on the full frame and on the subset with
+    ``qr_converged`` True, tagging each block, so the verdict can be read with
+    and without the non-converged configurations (the result should survive
+    dropping them). Rows are ordered so each hypothesis/horizon shows the two
+    config sets adjacent.
+    """
+    full = adjudicate_hypotheses(frame)
+    full.insert(0, "configs", "all")
+    converged = adjudicate_hypotheses(frame[frame["qr_converged"]])
+    converged.insert(0, "configs", "qr_converged_only")
+    combined = pd.concat([full, converged], ignore_index=True)
+    ordered = combined.sort_values(["hypothesis", "horizon", "configs"])
+    return ordered.reset_index(drop=True)
+
+
 @dataclass(frozen=True)
 class AnalysisTables:
-    """The four tables the analysis produces from the persisted results."""
+    """The tables the analysis produces from the persisted results."""
 
     per_configuration: pd.DataFrame
     seed_aggregates: pd.DataFrame
     headline_coverage_gap: pd.DataFrame
     verdicts: pd.DataFrame
+    per_index_h1: pd.DataFrame
+    robustness_verdicts: pd.DataFrame
 
 
 def run_analysis(results_dir: str | Path) -> AnalysisTables:
@@ -397,6 +468,8 @@ def run_analysis(results_dir: str | Path) -> AnalysisTables:
         seed_aggregates=aggregate_over_seeds(per_config),
         headline_coverage_gap=headline_coverage_gap(per_config),
         verdicts=adjudicate_hypotheses(frame),
+        per_index_h1=per_index_h1(frame),
+        robustness_verdicts=robustness_verdicts(frame),
     )
 
 
@@ -409,6 +482,8 @@ def write_tables(results_dir: str | Path, tables: AnalysisTables) -> list[Path]:
         "seed_aggregates.csv": tables.seed_aggregates,
         "headline_coverage_gap.csv": tables.headline_coverage_gap,
         "verdicts.csv": tables.verdicts,
+        "per_index_h1.csv": tables.per_index_h1,
+        "verdicts_robustness.csv": tables.robustness_verdicts,
     }
     written: list[Path] = []
     for name, table in outputs.items():
@@ -440,6 +515,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     print(headline.to_string(index=False))
     print("\nHypothesis verdicts (per horizon):\n")
     print(tables.verdicts.round(4).to_string(index=False))
+    print(
+        f"\nPer-index H1: static CQR coverage at h={HEADLINE_HORIZON}, "
+        "ordered by gap:\n"
+    )
+    print(tables.per_index_h1.round(4).to_string(index=False))
+    print("\nVerdict robustness (all configs vs dropping non-converged QuantReg):\n")
+    print(tables.robustness_verdicts.round(4).to_string(index=False))
     print(f"\nWrote {len(written)} tables to {Path(args.results_dir)}")
 
 

@@ -130,8 +130,44 @@ def test_verdict_table_runs_end_to_end_and_writes(results_dir) -> None:
         "seed_aggregates.csv",
         "headline_coverage_gap.csv",
         "verdicts.csv",
+        "per_index_h1.csv",
+        "verdicts_robustness.csv",
     ]
     assert all(path.exists() for path in written)
+
+
+def test_per_index_h1_orders_by_gap(results_dir) -> None:
+    frame = results.load_results(results_dir)
+    table = results.per_index_h1(frame, horizon=5)
+
+    assert set(table["index"]) == set(_INDICES)
+    assert list(table.columns) == [
+        "index",
+        "coverage_calm",
+        "coverage_post_break",
+        "coverage_gap",
+        "n_post_break",
+    ]
+    # Ordered by gap, largest first, and the gap is calm minus post-break.
+    gaps = table["coverage_gap"].to_numpy()
+    assert (np.diff(gaps) <= 1e-12).all()
+    row = table.iloc[0]
+    assert row["coverage_gap"] == pytest.approx(
+        row["coverage_calm"] - row["coverage_post_break"]
+    )
+
+
+def test_robustness_verdicts_carries_both_config_sets(results_dir) -> None:
+    frame = results.load_results(results_dir)
+    table = results.robustness_verdicts(frame)
+
+    assert set(table["configs"]) == {"all", "qr_converged_only"}
+    # Every (hypothesis, horizon) appears once per config set.
+    per_set = table.groupby("configs").size()
+    assert per_set["all"] == per_set["qr_converged_only"]
+    # The fixture marks every config converged, so dropping them changes nothing.
+    everything = frame[frame["qr_converged"]]
+    assert len(everything) == len(frame)
 
 
 def test_coverage_gap_matches_a_direct_computation(results_dir) -> None:
