@@ -23,8 +23,12 @@ dependencies = [
   "statsmodels",
   "yfinance",
   # Browser-impersonating HTTP client, used only as the chart-JSON fallback
-  # when yfinance returns nothing for a ticker.
-  "curl-cffi",
+  # when yfinance returns nothing for a ticker. Pinned: the current 0.15.0 wheel
+  # fails to load on macOS arm64 (missing CoreFoundation symbol _CFRelease);
+  # 0.7.4 links correctly.
+  "curl-cffi==0.7.4",
+  # Plotting, for the headline result figures (analysis.figures).
+  "matplotlib",
 ]
 
 [project.optional-dependencies]
@@ -91,6 +95,7 @@ module = [
   "torch.*",
   "lightning.*",
   "pytorch_forecasting.*",
+  "matplotlib.*",
 ]
 ignore_missing_imports = true
 
