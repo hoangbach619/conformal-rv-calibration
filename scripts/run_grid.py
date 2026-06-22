@@ -9,10 +9,12 @@ the scoped TFT grid later via ``--with-tft`` with reduced ``--horizons``.
 
 The sweep is resumable: a configuration whose parquet already exists is skipped,
 so the run can be stopped with Ctrl-C and restarted, picking up where it left
-off. Results land in the default results directory.
+off. Results land in ``--results-dir`` (the standard results directory by
+default); pointing the TFT grid at a separate directory keeps it from disturbing
+the HAR results.
 
     python scripts/run_grid.py                          # full HAR grid
-    python scripts/run_grid.py --with-tft --horizons 5 22 --indices ^GSPC
+    python scripts/run_grid.py --with-tft --horizons 10 22 --results-dir results_tft
 """
 
 from __future__ import annotations
@@ -24,7 +26,13 @@ from itertools import product
 
 from conformal_rv.data import INDICES
 from conformal_rv.experiment.engine import ConfigurationRun, run_configuration
-from conformal_rv.experiment.sweep import HORIZONS, SEEDS, configuration_path, run_sweep
+from conformal_rv.experiment.sweep import (
+    _DEFAULT_RESULTS_DIR,
+    HORIZONS,
+    SEEDS,
+    configuration_path,
+    run_sweep,
+)
 
 
 def _label(index: str, horizon: int, seed: int) -> str:
@@ -67,6 +75,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also fit the TFT comparator band (heavy; needs the tft extra)",
     )
+    parser.add_argument(
+        "--results-dir",
+        default=str(_DEFAULT_RESULTS_DIR),
+        metavar="DIR",
+        help="directory for the result parquets (default: the standard results/)",
+    )
     return parser
 
 
@@ -91,7 +105,13 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(f"wrote   {_label(index, horizon, seed)}", flush=True)
         return run
 
-    summary = run_sweep(indices=indices, horizons=horizons, seeds=seeds, run_fn=run_fn)
+    summary = run_sweep(
+        args.results_dir,
+        indices=indices,
+        horizons=horizons,
+        seeds=seeds,
+        run_fn=run_fn,
+    )
 
     # Skipped configurations are resolved instantly inside run_sweep (their
     # parquet already exists), so they are reported after the live "wrote" stream
