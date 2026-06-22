@@ -20,6 +20,8 @@ htmlcov/
 data/
 outputs/
 results/
+results_tft/
+results_tft_check/
 *.parquet
 *.csv
 *.h5
