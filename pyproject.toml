@@ -95,9 +95,19 @@ module = [
   "torch.*",
   "lightning.*",
   "pytorch_forecasting.*",
-  "matplotlib.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# matplotlib is a base dependency and ships py.typed, but its stubs are
+# incomplete (e.g. Axes.axvline is typed float-only though it accepts a datetime
+# at runtime). Skip following it so the plotting glue in analysis.figures is
+# treated as untyped whether or not matplotlib happens to be installed --
+# otherwise mypy passes locally (no matplotlib) but fails on CI (matplotlib
+# present), an environment-dependent result.
+module = ["matplotlib.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 # The TFT module is excluded from strict checking: its torch/lightning glue is
