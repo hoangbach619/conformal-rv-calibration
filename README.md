@@ -1,49 +1,23 @@
-# conformal-rv-calibration
+# Conformal calibration of realised volatility through regime breaks
 
-## Research question
+Prediction intervals on realised volatility forecasts hold their stated coverage in calm markets but lose it in the weeks after a regime break, and the misses cluster inside the break windows rather than spreading out. This holds across eight world equity indices from 2008 to 2026, and it is the same whether the underlying forecaster is a three term HAR model or a Temporal Fusion Transformer. Adaptive conformal methods restore coverage on both without widening the intervals in calm periods.
 
-Does any post-2023 online conformal method restore nominal *conditional*
-coverage of realised-volatility prediction intervals through named regime
-breaks, on a credible HAR base, and at what interval-width cost?
+![Coverage decay after a break](figures/coverage_decay.png)
 
-The intervals are built on a credible base (HAR-RV and quantile-regression
-HAR), corrected online, and judged primarily on the gap between calm-period
-coverage and coverage in the 60-trading-day window after each named break. The
-study asks whether the recent online methods (Conformal PID, DtACI) close that
-gap where the earlier baselines (ACI, AgACI) do not, and what that costs in
-interval width.
+## The question
 
-The full design is frozen in [docs/preregistration.md](docs/preregistration.md)
-before any model is run.
+A forecast of volatility is more useful as an interval than a point. An 80% interval promises that realised volatility lands inside it 80% of the time. That promise is easy to keep on average and easy to break exactly when it matters, in the dislocation after a shock. This project measures whether the promise holds in the 60 trading days after six named breaks, from the 2008 crisis to the 2022 rate shock, against how it holds in calm periods, and tests whether adaptive conformal methods keep it.
 
-## Status
+## What it finds
 
-Design stage. No models have been run and there are no results yet. The source
-tree is a typed scaffold of stubs; the pre-registration fixes the hypotheses,
-endpoints, data and tests in advance.
+At the 22 day horizon the static interval covers 0.787 in calm periods and 0.711 in the post break windows, a 7.7 point drop measured on 11,400 out of sample points. The Christoffersen independence test rejects in every configuration after Benjamini-Hochberg control, so the post break misses are clustered in time, not merely more frequent. The failure is not uniform across markets: the S&P 500 holds its coverage through breaks, while the continental European and Australian indices fail hardest, the STOXX 50 losing 27 points. Replacing the HAR forecaster with a Temporal Fusion Transformer changes none of this, the transformer band fails through breaks at the same rate, which places the failure in the conformal calibration under regime change rather than in the choice of forecaster. The adaptive methods, Conformal PID and DtACI, pull post break coverage back to near 0.80 on both bands, and the calm interval width stays within 1.25 times the static base, so the correction does not come at the cost of useless intervals the rest of the time.
 
-## Layout
+![Static coverage by index](figures/coverage_by_index.png)
 
-- `src/conformal_rv/` library: data, realised-vol estimators, features,
-  walk-forward splits, models, conformal methods, metrics.
-- `tests/` mirror the modules; the end-to-end integration test is gated behind
-  `--slow`.
-- `docs/preregistration.md` the frozen design.
-- `notebooks/` exploratory work.
+## Method
 
-## Conventions
+The hypotheses, break dates, horizons and thresholds were fixed and committed before any result was computed. Forecasts are evaluated on a rolling walk forward with a 44 day embargo between calibration and test to prevent overlap leakage. Coverage is tested with the Kupiec proportion of failures test and the Christoffersen conditional coverage and independence tests, and the false discovery rate is controlled with Benjamini-Hochberg at 0.10 across the full family of index by horizon by method tests. Every run is seeded and deterministic, and the dependencies are pinned, so the result reproduces.
 
-- Reproducibility: `SEED=42` and `n_jobs=1` throughout (see
-  `conformal_rv.SEED`, `conformal_rv.N_JOBS`).
-- Python 3.12, src-layout, setuptools.
-- British spelling in prose and docstrings.
+## Scope
 
-## Development
-
-```bash
-pip install -e ".[dev]"
-pre-commit install
-ruff check src tests
-mypy src
-pytest            # fast subset; add --slow for the integration test
-```
+This is a calibration and model risk result, not a trading strategy. It does not forecast returns or generate alpha. What it shows is that the confidence attached to a volatility forecast quietly stops being trustworthy in the conditions where it is most relied on, and that an adaptive conformal layer restores it.
